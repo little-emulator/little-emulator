@@ -1,0 +1,10 @@
+[package]
+name = "emulator"
+version = "0.1.0"
+edition = "2021"
+license = "GNU AGPLv3.0"
+repository = "https://git.nicolabelluti.me/little-emulator/little-emulator"
+documentation = "https://little-emulator.org"
+
+[dependencies]
+architectures = { path = "../architectures" }
