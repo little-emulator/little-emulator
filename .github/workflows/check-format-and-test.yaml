@@ -1,0 +1,31 @@
+name: Check, format and test
+
+on:
+  push:
+
+jobs:
+  build:
+    container: docker.io/rust:1.79.0-alpine3.20
+    steps:
+      - name: Install the dependencies
+        run: |
+          rustup component add clippy rustfmt &&
+          apk update &&
+          apk add git npm          
+
+      - name: Checkout the code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Check if the code compiles
+        run: cargo check
+
+      - name: Check if the tests run correctly
+        run: cargo test
+
+      - name: Check if the code is formatted correctly
+        run: cargo fmt --check
+
+      - name: Check if Clippy has someting to say
+        run: cargo clippy --all-targets -- -Dclippy::pedantic -Dclippy::nursery
