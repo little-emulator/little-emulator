@@ -1,10 +1,17 @@
-[package]
-name = "little-emulator"
-version = "0.1.0"
-edition = "2021"
-description = "An emulator for the LC2 ISA"
-license = "GNU AGPLv3.0"
-repository = "https://git.nicolabelluti.me/little-emulator/little-emulator"
-documentation = "https://little-emulator.org"
+[workspace]
 
-[dependencies]
+resolver = "2"
+members = [
+    "architectures",
+]
+
+# [package]
+# name = "little-emulator"
+# version = "0.1.0"
+# edition = "2021"
+# description = "An emulator for the LC2 ISA"
+# license = "GNU AGPLv3.0"
+# repository = "https://git.nicolabelluti.me/little-emulator/little-emulator"
+# documentation = "https://little-emulator.org"
+# 
+# [dependencies]
