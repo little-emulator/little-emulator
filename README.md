@@ -1,2 +1,1 @@
-# little-emulator
-
+# Little Emulator
