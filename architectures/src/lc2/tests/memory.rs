@@ -21,6 +21,26 @@ fn get_and_set() {
 }
 
 #[test]
+fn load_bytes() {
+    let mut cpu = Lc2::new(0x3000);
+    cpu.load_bytes(0x6000, &[1, 2, 3, 4, 5]).unwrap();
+
+    assert_eq!(cpu.get_memory(0x6000), 0x0102);
+    assert_eq!(cpu.get_memory(0x6001), 0x0304);
+    assert_eq!(cpu.get_memory(0x6002), 0x0500);
+}
+
+#[test]
+fn load_bytes_fails() {
+    let mut cpu = Lc2::new(0x3000);
+
+    assert_eq!(
+        cpu.load_bytes(0xffff, &[1, 2]),
+        Err("The array of byte is too big")
+    );
+}
+
+#[test]
 fn watchers() {
     // Create a new LC2 and an atomic u16 to store the watcher results
     let mut cpu = Lc2::new(0x3000);

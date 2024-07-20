@@ -77,9 +77,9 @@ impl crate::Architecture for Lc2 {
     #[must_use]
     fn get_memory(&mut self, address: Self::Address) -> Self::Data {
         self.memory_address_register = address;
-        let data = self.memory[address];
-        self.memory_data_register = data;
-        data
+        self.memory_data_register = self.memory[address];
+
+        self.memory_data_register
     }
 
     fn set_memory(&mut self, address: Self::Address, data: Self::Data) {
@@ -92,6 +92,55 @@ impl crate::Architecture for Lc2 {
         if let Some(function) = self.memory_watchers.get(&address) {
             function(data);
         }
+    }
+
+    fn load_bytes(
+        &mut self,
+        start_address: Self::Address,
+        bytes: &[u8],
+    ) -> Result<(), &'static str> {
+        // Calculate the address of the last cell
+        let data_size: usize = std::mem::size_of::<Self::Data>();
+        let end_address: usize = start_address as usize
+            + (bytes.len() / data_size)
+            + usize::from(bytes.len() % data_size != 0);
+
+        // Return an error if the byte array is too big
+        if end_address > Self::Address::MAX as usize {
+            return Err("The array of byte is too big");
+        }
+
+        // Save the Memory Address Register and the Memory Data Register
+        let memory_address_register = self.get_register(&Register::MemoryAddressRegister);
+        let memory_data_register = self.get_register(&Register::MemoryDataRegister);
+
+        // Convert the list of bytes into a list of address-data tuple and save
+        // them to memory
+        bytes
+            .chunks(2)
+            .enumerate()
+            .map(
+                |(i, bytes): (usize, &[u8])| -> (Self::Address, Self::Data) {
+                    // Put the high byte into the data word
+                    let mut data = u16::from(bytes[0]) << 8;
+
+                    // Put the low byte into the data word, if it exists
+                    if bytes.len() == 2 {
+                        data |= u16::from(bytes[1]);
+                    }
+
+                    // Return the address-data tuple
+                    #[allow(clippy::cast_possible_truncation)]
+                    (i as Self::Address + start_address, data)
+                },
+            )
+            .for_each(|(address, data)| self.set_memory(address, data));
+
+        // Restore the Memory Address Register and the Memory Data Register
+        self.set_register(&Register::MemoryAddressRegister, memory_address_register);
+        self.set_register(&Register::MemoryDataRegister, memory_data_register);
+
+        Ok(())
     }
 
     #[must_use]

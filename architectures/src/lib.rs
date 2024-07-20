@@ -10,6 +10,16 @@ pub trait Architecture {
     fn get_memory(&mut self, address: Self::Address) -> Self::Data;
     fn set_memory(&mut self, address: Self::Address, data: Self::Data);
 
+    /// # Errors
+    ///
+    /// This method will return an `Err` if an attempt is made to insert a
+    /// quantity of bytes exceeding `Self::Address`
+    fn load_bytes(
+        &mut self,
+        start_address: Self::Address,
+        bytes: &[u8],
+    ) -> Result<(), &'static str>;
+
     #[must_use]
     fn get_register(&self, register: &Self::Register) -> Self::Data;
     fn set_register(&mut self, register: &Self::Register, data: Self::Data);
