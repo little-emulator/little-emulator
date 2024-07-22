@@ -6,7 +6,7 @@ use std::{
 
 use architectures::{
     lc2::{Lc2, Register},
-    Architecture,
+    Architecture, WatcherType,
 };
 
 fn main() -> io::Result<()> {
@@ -57,7 +57,7 @@ fn setup_lc2(cpu: &mut Lc2) {
     cpu.set_memory(0xffff, 0x8000);
 
     // Add the memory watcher for the Video Data Register
-    cpu.add_memory_watcher(0xf3ff, |data: u16| {
+    cpu.add_memory_watcher(0xf3ff, WatcherType::OnWrite, |data: u16| {
         // Print the character to stdout
         print!(
             "{}",

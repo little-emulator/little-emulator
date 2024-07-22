@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::WatcherType;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -43,14 +44,14 @@ fn set_through_gpr() {
 }
 
 #[test]
-fn watcher() {
+fn watcher_on_write() {
     // Create a new LC2 and an atomic u16 to store the watcher results
     let mut cpu = Lc2::new(0x3000);
     let value = Rc::new(AtomicU16::new(0));
 
     // Create a watcher that transforms the Condition Code into a u16
     let value_watcher = value.clone();
-    cpu.add_condition_code_watcher(move |new_value| {
+    cpu.add_condition_code_watcher(WatcherType::OnWrite, move |new_value| {
         value_watcher.store(u16::from(new_value), Ordering::Relaxed);
     });
 
@@ -63,9 +64,44 @@ fn watcher() {
     assert_eq!(value.load(Ordering::Relaxed), 1);
 
     // Remove the watcher and assert that nothing changes
-    cpu.remove_condition_code_watcher();
+    cpu.remove_condition_code_watcher(WatcherType::OnWrite);
     #[allow(clippy::unusual_byte_groupings)]
     cpu.set_memory(0x3001, 0b0001_000_000_1_11110); // ADD R0, R0, #-2
     cpu.step_instruction();
+    assert_eq!(value.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn watcher_on_read() {
+    // Create a new LC2 and an atomic u16 to store the watcher results
+    let mut cpu = Lc2::new(0x3000);
+    let value = Rc::new(AtomicU16::new(0));
+
+    // Create a watcher that transforms the Condition Code into a u16
+    let value_watcher = value.clone();
+    cpu.add_condition_code_watcher(WatcherType::OnRead, move |new_value| {
+        value_watcher.store(u16::from(new_value), Ordering::Relaxed);
+    });
+
+    // Set the Condition Code
+    #[allow(clippy::unusual_byte_groupings)]
+    cpu.set_memory(0x3000, 0b0001_000_000_1_00001); // ADD R0, R0, #1
+
+    // Check that the watcher has NOT been called
+    cpu.step_instruction();
+    assert_eq!(value.load(Ordering::Relaxed), 0);
+
+    // Get the Condition Code
+    let _ = cpu.get_condition_code();
+
+    // Check that the watcher has been called
+    assert_eq!(value.load(Ordering::Relaxed), 1);
+
+    // Remove the watcher and assert that nothing changes
+    cpu.remove_condition_code_watcher(WatcherType::OnRead);
+    #[allow(clippy::unusual_byte_groupings)]
+    cpu.set_memory(0x3001, 0b0001_000_000_1_11110); // ADD R0, R0, #-2
+    cpu.step_instruction();
+    let _ = cpu.get_condition_code();
     assert_eq!(value.load(Ordering::Relaxed), 1);
 }

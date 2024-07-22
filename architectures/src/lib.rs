@@ -1,5 +1,11 @@
 pub mod lc2;
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub enum WatcherType {
+    OnRead,
+    OnWrite,
+}
+
 pub trait Architecture {
     type Address;
     type Data;
@@ -28,20 +34,28 @@ pub trait Architecture {
     fn get_condition_code(&self) -> Self::ConditionCode;
     fn set_condition_code(&mut self, condition_code: &Self::ConditionCode);
 
-    fn add_memory_watcher<F>(&mut self, address: Self::Address, function: F)
-    where
+    fn add_memory_watcher<F>(
+        &mut self,
+        address: Self::Address,
+        watcher_type: WatcherType,
+        function: F,
+    ) where
         F: Fn(Self::Data) + 'static;
-    fn remove_memory_watcher(&mut self, address: Self::Address);
+    fn remove_memory_watcher(&mut self, address: Self::Address, watcher_type: WatcherType);
 
-    fn add_register_watcher<F>(&mut self, register: &Self::Register, function: F)
-    where
+    fn add_register_watcher<F>(
+        &mut self,
+        register: &Self::Register,
+        watcher_type: WatcherType,
+        function: F,
+    ) where
         F: Fn(Self::Data) + 'static;
-    fn remove_register_watcher(&mut self, register: &Self::Register);
+    fn remove_register_watcher(&mut self, register: &Self::Register, watcher_type: WatcherType);
 
-    fn add_condition_code_watcher<F>(&mut self, function: F)
+    fn add_condition_code_watcher<F>(&mut self, watcher_type: WatcherType, function: F)
     where
         F: Fn(Self::ConditionCode) + 'static;
-    fn remove_condition_code_watcher(&mut self);
+    fn remove_condition_code_watcher(&mut self, watcher_type: WatcherType);
 
     fn step_instruction(&mut self);
 

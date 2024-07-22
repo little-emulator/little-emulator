@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::WatcherType;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -51,7 +52,7 @@ fn memory_registers() {
 }
 
 #[test]
-fn watchers() {
+fn watchers_on_write() {
     // Create a new LC2 and an atomic u16 to store the watcher results
     let mut cpu = Lc2::new(0x3000);
     let value = Rc::new(AtomicU16::new(0));
@@ -60,23 +61,72 @@ fn watchers() {
     for i in 0..8u16 {
         let register = Register::Gpr(Gpr::try_from(i as usize).unwrap());
 
+        // Reset the watcher results
+        value.store(0, Ordering::Relaxed);
+
         // Create a watcher that adds the answer to the ultimate question of
         // life, the universe, and everything to the value that is put into the
         // register
         let value_watcher = value.clone();
-        cpu.add_register_watcher(&register, move |new_value| {
+        cpu.add_register_watcher(&register, WatcherType::OnWrite, move |new_value| {
+            value_watcher.store(new_value + 42, Ordering::Relaxed);
+        });
+
+        // Get the register
+        let _ = cpu.get_register(&register);
+
+        // Check that the watcher has NOT been called
+        assert_eq!(value.load(Ordering::Relaxed), 0);
+
+        // Set the register and check that the watcher has been called
+        cpu.set_register(&register, 3000 + i);
+
+        assert_eq!(value.load(Ordering::Relaxed), 3042 + i);
+
+        // Remove the watcher and assert that nothing changes
+        cpu.remove_register_watcher(&register, WatcherType::OnWrite);
+        cpu.set_register(&register, 6000 + i);
+        assert_eq!(value.load(Ordering::Relaxed), 3042 + i);
+    }
+}
+
+#[test]
+fn watchers_on_read() {
+    // Create a new LC2 and an atomic u16 to store the watcher results
+    let mut cpu = Lc2::new(0x3000);
+    let value = Rc::new(AtomicU16::new(0));
+
+    // For every register...
+    for i in 0..8u16 {
+        let register = Register::Gpr(Gpr::try_from(i as usize).unwrap());
+
+        // Reset the watcher results
+        value.store(0, Ordering::Relaxed);
+
+        // Create a watcher that adds the answer to the ultimate question of
+        // life, the universe, and everything to the value that is put into the
+        // register
+        let value_watcher = value.clone();
+        cpu.add_register_watcher(&register, WatcherType::OnRead, move |new_value| {
             value_watcher.store(new_value + 42, Ordering::Relaxed);
         });
 
         // Set the register
         cpu.set_register(&register, 3000 + i);
 
+        // Check that the watcher has NOT been called
+        assert_eq!(value.load(Ordering::Relaxed), 0);
+
+        // Get the register
+        let _ = cpu.get_register(&register);
+
         // Check if the watcher has been called
         assert_eq!(value.load(Ordering::Relaxed), 3042 + i);
 
         // Remove the watcher and assert that nothing changes
-        cpu.remove_register_watcher(&register);
+        cpu.remove_register_watcher(&register, WatcherType::OnRead);
         cpu.set_register(&register, 6000 + i);
+        let _ = cpu.get_register(&register);
         assert_eq!(value.load(Ordering::Relaxed), 3042 + i);
     }
 }

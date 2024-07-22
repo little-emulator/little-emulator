@@ -4,13 +4,20 @@ mod tests;
 mod condition_code;
 mod memory;
 mod registers;
-
 pub use condition_code::ConditionCode;
 use memory::Memory;
 pub use registers::{Gpr, Register};
 
+use crate::{Architecture, WatcherType};
 use std::collections::BTreeMap;
 use std::fmt;
+
+type RegisterWatchersStorage = BTreeMap<(Register, WatcherType), Box<dyn Fn(u16)>>;
+type MemoryWatchersStorage = BTreeMap<(u16, WatcherType), Box<dyn Fn(u16)>>;
+
+// 0 => WatcherType::OnWrite,
+// 1 => WatcherType::OnRead,
+type ConditionCodeWatchersStorage = [Option<Box<dyn Fn(ConditionCode)>>; 2];
 
 #[derive(Default)]
 pub struct Lc2 {
@@ -26,9 +33,9 @@ pub struct Lc2 {
     memory: Memory,
 
     // Watchers
-    register_watchers: BTreeMap<Register, Box<dyn Fn(u16)>>,
-    memory_watchers: BTreeMap<u16, Box<dyn Fn(u16)>>,
-    condition_code_watcher: Option<Box<dyn Fn(ConditionCode)>>,
+    register_watchers: RegisterWatchersStorage,
+    memory_watchers: MemoryWatchersStorage,
+    condition_code_watchers: ConditionCodeWatchersStorage,
 }
 
 impl Lc2 {
@@ -43,16 +50,33 @@ impl Lc2 {
 
 impl fmt::Debug for Lc2 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let gpr: &BTreeMap<Option<Gpr>, &u16> = &self
+            .general_purpose_register
+            .iter()
+            .enumerate()
+            .map(|(i, value)| (Gpr::try_from(i).ok(), value))
+            .collect();
+
+        let condition_code_watchers: &Vec<WatcherType> = &self
+            .condition_code_watchers
+            .iter()
+            .enumerate()
+            .filter_map(|(i, watcher)| {
+                if watcher.is_some() {
+                    Some(if i == 0 {
+                        WatcherType::OnWrite
+                    } else {
+                        WatcherType::OnRead
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         fmt.debug_struct("Lc2")
             .field("memory", &self.memory)
-            .field("general_purpose_registers", {
-                &self
-                    .general_purpose_register
-                    .iter()
-                    .enumerate()
-                    .map(|(i, value)| (Gpr::try_from(i).ok(), value))
-                    .collect::<BTreeMap<_, _>>()
-            })
+            .field("general_purpose_registers", gpr)
             .field("condition_code", &self.condition_code)
             .field("program_counter", &self.program_counter)
             .field("instruction_register", &self.instruction_register)
@@ -60,15 +84,12 @@ impl fmt::Debug for Lc2 {
             .field("memory_data_register", &self.memory_data_register)
             .field("register_watchers", &self.register_watchers.keys())
             .field("memory_watchers", &self.memory_watchers.keys())
-            .field(
-                "condition_code_watcher",
-                &self.condition_code_watcher.is_some(),
-            )
+            .field("condition_code_watchers", &condition_code_watchers)
             .finish()
     }
 }
 
-impl crate::Architecture for Lc2 {
+impl Architecture for Lc2 {
     type Address = u16;
     type Data = u16;
     type Register = Register;
@@ -76,10 +97,17 @@ impl crate::Architecture for Lc2 {
 
     #[must_use]
     fn get_memory(&mut self, address: Self::Address) -> Self::Data {
-        self.memory_address_register = address;
-        self.memory_data_register = self.memory[address];
+        let data = self.memory[address];
 
-        self.memory_data_register
+        self.memory_address_register = address;
+        self.memory_data_register = data;
+
+        // If there is a watcher for this address, call it
+        if let Some(function) = self.memory_watchers.get(&(address, WatcherType::OnRead)) {
+            function(data);
+        }
+
+        data
     }
 
     fn set_memory(&mut self, address: Self::Address, data: Self::Data) {
@@ -89,7 +117,7 @@ impl crate::Architecture for Lc2 {
         self.memory[address] = data;
 
         // If there is a watcher for this address, call it
-        if let Some(function) = self.memory_watchers.get(&address) {
+        if let Some(function) = self.memory_watchers.get(&(address, WatcherType::OnWrite)) {
             function(data);
         }
     }
@@ -145,13 +173,23 @@ impl crate::Architecture for Lc2 {
 
     #[must_use]
     fn get_register(&self, register: &Self::Register) -> Self::Data {
-        match register {
+        let data = match register {
             Register::Gpr(gpr) => self.general_purpose_register[u8::from(gpr.clone()) as usize],
             Register::ProgramCounter => self.program_counter,
             Register::InstructionRegister => self.instruction_register,
             Register::MemoryAddressRegister => self.memory_address_register,
             Register::MemoryDataRegister => self.memory_data_register,
+        };
+
+        // If there is a watcher for this register, call it
+        if let Some(function) = self
+            .register_watchers
+            .get(&(register.clone(), WatcherType::OnRead))
+        {
+            function(data);
         }
+
+        data
     }
 
     fn set_register(&mut self, register: &Self::Register, data: Self::Data) {
@@ -174,57 +212,79 @@ impl crate::Architecture for Lc2 {
         *register_pointer = data;
 
         // If there is a watcher for this register, call it
-        if let Some(function) = self.register_watchers.get(register) {
+        if let Some(function) = self
+            .register_watchers
+            .get(&(register.clone(), WatcherType::OnWrite))
+        {
             function(data);
         }
     }
 
     #[must_use]
     fn get_condition_code(&self) -> Self::ConditionCode {
-        self.condition_code.clone()
+        let condition_code = self.condition_code.clone();
+
+        // If there is a watcher for the condition code, call it
+        if let Some(function) = &self.condition_code_watchers[1] {
+            function(condition_code.clone());
+        }
+
+        condition_code
     }
 
     fn set_condition_code(&mut self, condition_code: &Self::ConditionCode) {
         self.condition_code = condition_code.clone();
 
-        // If there is a watcher for the collection code, call it
-        if let Some(function) = &self.condition_code_watcher {
+        // If there is a watcher for the condition code, call it
+        if let Some(function) = &self.condition_code_watchers[0] {
             function(condition_code.clone());
         }
     }
 
-    fn add_memory_watcher<F>(&mut self, address: Self::Address, function: F)
-    where
+    fn add_memory_watcher<F>(
+        &mut self,
+        address: Self::Address,
+        watcher_type: WatcherType,
+        function: F,
+    ) where
         F: Fn(Self::Data) + 'static,
     {
-        self.memory_watchers.insert(address, Box::new(function));
+        self.memory_watchers
+            .insert((address, watcher_type), Box::new(function));
     }
 
-    fn remove_memory_watcher(&mut self, address: Self::Address) {
-        self.memory_watchers.remove(&address);
+    fn remove_memory_watcher(&mut self, address: Self::Address, watcher_type: WatcherType) {
+        self.memory_watchers.remove(&(address, watcher_type));
     }
 
-    fn add_register_watcher<F>(&mut self, register: &Self::Register, function: F)
-    where
+    fn add_register_watcher<F>(
+        &mut self,
+        register: &Self::Register,
+        watcher_type: WatcherType,
+        function: F,
+    ) where
         F: Fn(Self::Data) + 'static,
     {
         self.register_watchers
-            .insert(register.clone(), Box::new(function));
+            .insert((register.clone(), watcher_type), Box::new(function));
     }
 
-    fn remove_register_watcher(&mut self, register: &Self::Register) {
-        self.register_watchers.remove(register);
+    fn remove_register_watcher(&mut self, register: &Self::Register, watcher_type: WatcherType) {
+        self.register_watchers
+            .remove(&(register.clone(), watcher_type));
     }
 
-    fn add_condition_code_watcher<F>(&mut self, function: F)
+    fn add_condition_code_watcher<F>(&mut self, watcher_type: WatcherType, function: F)
     where
         F: Fn(Self::ConditionCode) + 'static,
     {
-        self.condition_code_watcher = Some(Box::new(function));
+        let idx = usize::from(watcher_type != WatcherType::OnWrite);
+        self.condition_code_watchers[idx] = Some(Box::new(function));
     }
 
-    fn remove_condition_code_watcher(&mut self) {
-        self.condition_code_watcher = None;
+    fn remove_condition_code_watcher(&mut self, watcher_type: WatcherType) {
+        let idx = usize::from(watcher_type != WatcherType::OnWrite);
+        self.condition_code_watchers[idx] = None;
     }
 
     #[allow(clippy::too_many_lines)]
