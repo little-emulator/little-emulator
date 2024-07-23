@@ -93,6 +93,7 @@ impl Architecture for Lc2 {
     type Address = u16;
     type Data = u16;
     type Register = Register;
+    type RegisterData = u16;
     type ConditionCode = ConditionCode;
 
     #[must_use]
@@ -172,7 +173,7 @@ impl Architecture for Lc2 {
     }
 
     #[must_use]
-    fn get_register(&self, register: &Self::Register) -> Self::Data {
+    fn get_register(&self, register: &Self::Register) -> Self::RegisterData {
         let data = match register {
             Register::Gpr(gpr) => self.general_purpose_register[u8::from(gpr.clone()) as usize],
             Register::ProgramCounter => self.program_counter,
@@ -192,7 +193,7 @@ impl Architecture for Lc2 {
         data
     }
 
-    fn set_register(&mut self, register: &Self::Register, data: Self::Data) {
+    fn set_register(&mut self, register: &Self::Register, data: Self::RegisterData) {
         // Get a mutable pointer to the register
         let register_pointer: &mut u16 = match register {
             Register::Gpr(gpr) => {
@@ -263,7 +264,7 @@ impl Architecture for Lc2 {
         watcher_type: WatcherType,
         function: F,
     ) where
-        F: Fn(Self::Data) + 'static,
+        F: Fn(Self::RegisterData) + 'static,
     {
         self.register_watchers
             .insert((register.clone(), watcher_type), Box::new(function));

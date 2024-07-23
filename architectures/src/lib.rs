@@ -10,6 +10,7 @@ pub trait Architecture {
     type Address;
     type Data;
     type Register;
+    type RegisterData;
     type ConditionCode;
 
     #[must_use]
@@ -27,8 +28,8 @@ pub trait Architecture {
     ) -> Result<(), &'static str>;
 
     #[must_use]
-    fn get_register(&self, register: &Self::Register) -> Self::Data;
-    fn set_register(&mut self, register: &Self::Register, data: Self::Data);
+    fn get_register(&self, register: &Self::Register) -> Self::RegisterData;
+    fn set_register(&mut self, register: &Self::Register, data: Self::RegisterData);
 
     #[must_use]
     fn get_condition_code(&self) -> Self::ConditionCode;
@@ -49,7 +50,7 @@ pub trait Architecture {
         watcher_type: WatcherType,
         function: F,
     ) where
-        F: Fn(Self::Data) + 'static;
+        F: Fn(Self::RegisterData) + 'static;
     fn remove_register_watcher(&mut self, register: &Self::Register, watcher_type: WatcherType);
 
     fn add_condition_code_watcher<F>(&mut self, watcher_type: WatcherType, function: F)

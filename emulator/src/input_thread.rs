@@ -1,3 +1,4 @@
+use console::Key;
 use std::{
     collections::VecDeque,
     sync::{
@@ -7,8 +8,6 @@ use std::{
     thread,
 };
 
-use console::Key;
-
 pub struct InputThread {
     buffer: Arc<Mutex<VecDeque<u8>>>,
     stop_signal: Sender<()>,
@@ -16,6 +15,7 @@ pub struct InputThread {
 }
 
 impl InputThread {
+    #[must_use]
     pub fn spawn() -> Self {
         // Create a new buffer and a channel to stop the thread
         let buffer = Arc::new(Mutex::new(VecDeque::<u8>::new()));
@@ -30,16 +30,18 @@ impl InputThread {
 
             loop {
                 // Read stdin without echo or buffering (raw console)
-                let key = term.read_key_raw().expect("Couldn't read from stdin!");
+                let Ok(key) = term.read_key_raw() else { break };
 
-                // Stop if the channel has broken or if is not empty
+                // Stop if the channel is broken or if is not empty
                 match stop_rx.try_recv() {
                     Ok(()) | Err(TryRecvError::Disconnected) => break,
                     Err(TryRecvError::Empty) => (),
                 }
 
                 // Get a lock on the buffer
-                let mut buffer = buffer_thread.lock().unwrap();
+                let Ok(mut buffer) = buffer_thread.lock() else {
+                    break;
+                };
 
                 // Put the key into the buffer as a [u8]
                 match key {
@@ -68,16 +70,18 @@ impl InputThread {
         }
     }
 
+    #[must_use]
     pub fn get_buffer(&self) -> Arc<Mutex<VecDeque<u8>>> {
         self.buffer.clone()
     }
 
-    pub fn is_alive(&self) -> bool {
-        !self
-            .join_handle
-            .as_ref()
-            .expect("Input Thread handle not available!")
-            .is_finished()
+    #[must_use]
+    pub fn is_healthy(&self) -> bool {
+        if let Some(handle) = self.join_handle.as_ref() {
+            return !handle.is_finished();
+        }
+
+        false
     }
 }
 
@@ -85,7 +89,7 @@ impl Drop for InputThread {
     fn drop(&mut self) {
         // Print a message
         println!();
-        if self.is_alive() {
+        if self.is_healthy() {
             // TODO: Send a char to stdin to exit without pressing any keys
             println!("\nPress any key to continue...");
         } else {
@@ -96,10 +100,6 @@ impl Drop for InputThread {
         let _ = self.stop_signal.send(());
 
         // Join the thread
-        let _ = self
-            .join_handle
-            .take()
-            .expect("Input Thread handle not available!")
-            .join();
+        let _ = self.join_handle.take().map(thread::JoinHandle::join);
     }
 }
