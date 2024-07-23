@@ -66,8 +66,11 @@ impl crate::Emulator for Lc2 {
         self.set_register(&Register::ProgramCounter, start_address);
 
         // Put the rest of the binary in memory starting from `start_address`
-        self.load_bytes(start_address, &reader.bytes().collect::<Result<Vec<u8>, _>>()?)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "The file is too long"))?;
+        self.load_bytes(
+            start_address,
+            &reader.bytes().collect::<Result<Vec<u8>, _>>()?,
+        )
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "The file is too long"))?;
 
         Ok(())
     }
