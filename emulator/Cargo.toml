@@ -8,3 +8,4 @@ documentation = "https://little-emulator.org"
 
 [dependencies]
 architectures = { path = "../architectures" }
+console = "0.15.8"

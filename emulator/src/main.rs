@@ -1,7 +1,11 @@
+mod input_thread;
+use input_thread::InputThread;
+
 use std::{
+    collections::VecDeque,
     fs::File,
-    io,
-    io::{BufRead, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
+    sync::{Arc, Mutex},
 };
 
 use architectures::{
@@ -9,21 +13,51 @@ use architectures::{
     Architecture, WatcherType,
 };
 
-fn main() -> io::Result<()> {
+fn main() {
+    // Spawn a input thread
+    let input_thread = InputThread::spawn();
+
     // Create a new LC2
     let mut cpu = Lc2::new(0x3000);
-    setup_lc2(&mut cpu);
+    setup_lc2(&mut cpu, input_thread.get_buffer());
 
     // Fill the memory with the bytes from the executable
-    let start_address = load_file(&mut cpu, "test.obj")?;
+    let start_address = load_file(&mut cpu, "test.obj").unwrap();
     cpu.set_register(&Register::ProgramCounter, start_address);
 
-    // Execute the next istruction while the processor is not halted
+    // Get the input buffer
+    let input_buffer = input_thread.get_buffer();
+
+    // While the CPU is active...
     while cpu.get_memory(0xffff) & 0x8000 != 0 {
+        // Is the input thread died, exit
+        if !input_thread.is_alive() {
+            break;
+        }
+
+        // Get the Keyboard Status Register
+        let keyboard_status_register = cpu.get_memory(0xf400);
+
+        // If the input buffer is not empty...
+        if let Some(input_byte) = input_buffer.lock().unwrap().front() {
+            let input_byte = u16::from(*input_byte);
+
+            // Set the Keyboard Status Register
+            if keyboard_status_register & 0x8000 == 0 {
+                cpu.set_memory(0xf400, keyboard_status_register | 0x8000);
+            }
+
+            // Set the Keyboard Data Register
+            cpu.set_memory(0xf401, input_byte);
+        }
+        // Else unset the Keyboard Status Register
+        else if keyboard_status_register & 0x8000 != 0 {
+            cpu.set_memory(0xf400, keyboard_status_register & 0x7fff);
+        }
+
+        // Step a CPU instruction
         cpu.step_instruction();
     }
-
-    Ok(())
 }
 
 fn load_file(cpu: &mut impl Architecture<Address = u16>, file_name: &str) -> io::Result<u16> {
@@ -44,6 +78,7 @@ fn load_file(cpu: &mut impl Architecture<Address = u16>, file_name: &str) -> io:
     // Get the rest of the bytes from the binary
     let memory = reader.bytes().collect::<Result<Vec<u8>, _>>()?;
 
+    // Load the bytes into the CPU
     cpu.load_bytes(start_address, &memory)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "The file is too long"))?;
 
@@ -51,7 +86,7 @@ fn load_file(cpu: &mut impl Architecture<Address = u16>, file_name: &str) -> io:
 }
 
 #[allow(clippy::too_many_lines)]
-fn setup_lc2(cpu: &mut Lc2) {
+fn setup_lc2(cpu: &mut Lc2, input_buffer: Arc<Mutex<VecDeque<u8>>>) {
     // Set the Video Status Register and the Machine Control Register
     cpu.set_memory(0xf3fc, 0x8000);
     cpu.set_memory(0xffff, 0x8000);
@@ -78,6 +113,12 @@ fn setup_lc2(cpu: &mut Lc2) {
         io::stdout()
             .flush()
             .expect("Couldn't flush the stdout buffer");
+    });
+
+    // If the Keyboard Data Register is read, remove the first byte in the
+    // input buffer
+    cpu.add_memory_watcher(0xf401, WatcherType::OnRead, move |_| {
+        input_buffer.lock().unwrap().pop_front();
     });
 
     // ================================= Trap ==================================
