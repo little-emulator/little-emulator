@@ -6,7 +6,6 @@ on:
 jobs:
   build:
     container: docker.io/rust:1.79.0-alpine3.20
-    runs-on: linux
     steps:
       - name: Install the dependencies
         run: |
