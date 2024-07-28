@@ -28,4 +28,4 @@ jobs:
         run: cargo fmt --check
 
       - name: Check if Clippy has someting to say
-        run: cargo clippy --all-targets -- -Dclippy::pedantic -Dclippy::nursery
+        run: cargo clippy --all-targets

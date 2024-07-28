@@ -9,3 +9,19 @@ documentation = "https://little-emulator.org"
 [dependencies]
 architectures = { path = "../architectures" }
 console = "0.15.8"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# unwrap_used = "deny"
+enum_glob_use = { level = "deny", priority = 1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+
+[profile.release]
+opt-level = 'z'   # Optimize for size.
+lto = true        # Enable Link Time Optimisation
+codegen-units = 1 # Reduced to increase optimisations.
+panic = 'abort'   # Abort on panic
+strip = "symbols" # Strip symbols from binary
