@@ -11,7 +11,7 @@ jobs:
         run: |
           rustup component add clippy rustfmt &&
           apk update &&
-          apk add git npm          
+          apk add musl-dev git npm          
 
       - name: Checkout the code
         uses: actions/checkout@v3
