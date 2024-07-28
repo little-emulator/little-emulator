@@ -10,6 +10,9 @@ documentation = "https://little-emulator.org"
 architectures = { path = "../architectures" }
 console = "0.15.8"
 
+[build-dependencies]
+assemblers = { git = "https://git.nicolabelluti.me/little-emulator/little-assembler.git" }
+
 [lints.rust]
 unsafe_code = "forbid"
 
@@ -18,10 +21,3 @@ unsafe_code = "forbid"
 enum_glob_use = { level = "deny", priority = 1 }
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
-
-[profile.release]
-opt-level = 'z'   # Optimize for size.
-lto = true        # Enable Link Time Optimisation
-codegen-units = 1 # Reduced to increase optimisations.
-panic = 'abort'   # Abort on panic
-strip = "symbols" # Strip symbols from binary
