@@ -11,15 +11,8 @@ use architectures::{
 };
 
 macro_rules! embed_assembly {
-    ($architecture: expr, $trap_routine: expr) => {{
-        include_bytes!(concat!(
-            env!("OUT_DIR"),
-            "/",
-            $architecture,
-            "/",
-            $trap_routine,
-            ".o"
-        ))
+    ($trap_routine: expr) => {{
+        include_bytes!(concat!(env!("OUT_DIR"), "/lc2/", $trap_routine, ".o"))
     }};
 }
 
@@ -144,31 +137,31 @@ impl crate::Emulator for Lc2 {
         }
 
         // GETC syscall
-        self.load_bytes(0x0400, embed_assembly!("lc2", "getc"))
+        self.load_bytes(0x0400, embed_assembly!("getc.asm"))
             .expect("Couldn't put trap subroutine at address 0x0400");
 
         // OUT syscall
-        self.load_bytes(0x0430, embed_assembly!("lc2", "out"))
+        self.load_bytes(0x0430, embed_assembly!("out.asm"))
             .expect("Couldn't put trap subroutine at address 0x0430");
 
         // PUTs Syscall
-        self.load_bytes(0x0450, embed_assembly!("lc2", "puts"))
+        self.load_bytes(0x0450, embed_assembly!("puts.asm"))
             .expect("Couldn't put trap subroutine at address 0x0450");
 
         // IN syscall
-        self.load_bytes(0x04a0, embed_assembly!("lc2", "in"))
+        self.load_bytes(0x04a0, embed_assembly!("in.asm"))
             .expect("Couldn't put trap subroutine at address 0x04a0");
 
         // PUTSP syscall
-        self.load_bytes(0x04e0, embed_assembly!("lc2", "putsp"))
+        self.load_bytes(0x04e0, embed_assembly!("putsp.asm"))
             .expect("Couldn't put trap subroutine at address 0x04e0");
 
         // HALT syscall
-        self.load_bytes(0xfd70, embed_assembly!("lc2", "halt"))
+        self.load_bytes(0xfd70, embed_assembly!("halt.asm"))
             .expect("Couldn't put trap subroutine at address 0xfd70");
 
         // Invalid trap syscall
-        self.load_bytes(0xfd00, embed_assembly!("lc2", "invalid"))
+        self.load_bytes(0xfd00, embed_assembly!("invalid.asm"))
             .expect("Couldn't put trap subroutine at address 0xfd00");
     }
 }
