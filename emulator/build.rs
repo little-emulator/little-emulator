@@ -34,7 +34,7 @@ fn build_trap_routines() {
     for architecture_dir in architectures_dirs {
         // Create an output directory for the assembled routines
         let output_dir =
-            Path::new(&env::var("OUT_DIR").unwrap()).join(&architecture_dir.file_name());
+            Path::new(&env::var("OUT_DIR").unwrap()).join(architecture_dir.file_name());
         if output_dir.metadata().is_err() {
             fs::create_dir(&output_dir).unwrap();
         }
@@ -60,7 +60,7 @@ fn build_trap_routines() {
 
             // Write the binary into the output file
             let output_file_name = format!("{}.o", assembly_file.file_name().to_string_lossy());
-            File::create(&Path::new(&output_dir).join(output_file_name))
+            File::create(Path::new(&output_dir).join(output_file_name))
                 .unwrap()
                 .write_all(&binary)
                 .unwrap();

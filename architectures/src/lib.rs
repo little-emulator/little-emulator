@@ -1,4 +1,7 @@
 pub mod lc2;
+pub mod lc3;
+
+pub mod common;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum WatcherType {

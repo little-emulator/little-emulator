@@ -1,13 +1,10 @@
 #[cfg(test)]
 mod tests;
 
-mod condition_code;
-mod memory;
 mod registers;
-pub use condition_code::ConditionCode;
-use memory::Memory;
 pub use registers::{Gpr, Register};
 
+use super::common::{ConditionCode, Memory16x16};
 use crate::{Architecture, WatcherType};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -30,7 +27,7 @@ pub struct Lc2 {
     // Memory
     memory_address_register: u16,
     memory_data_register: u16,
-    memory: Memory,
+    memory: Memory16x16,
 
     // Watchers
     register_watchers: RegisterWatchersStorage,
