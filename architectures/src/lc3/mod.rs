@@ -4,17 +4,16 @@ mod tests;
 mod registers;
 pub use registers::{Gpr, Register};
 
-use super::common::{ConditionCode, Memory16x16};
-use crate::{Architecture, WatcherType};
+use crate::{
+    common::{
+        ConditionCode, ConditionCodeWatchersStorage, Memory16x16, MemoryWatchersStorage,
+        RegisterWatchersStorage,
+    },
+    Architecture, WatcherType,
+};
+
 use std::collections::BTreeMap;
 use std::fmt;
-
-type RegisterWatchersStorage = BTreeMap<(Register, WatcherType), Box<dyn Fn(u16)>>;
-type MemoryWatchersStorage = BTreeMap<(u16, WatcherType), Box<dyn Fn(u16)>>;
-
-// 0 => WatcherType::OnWrite,
-// 1 => WatcherType::OnRead,
-type ConditionCodeWatchersStorage = [Option<Box<dyn Fn(ConditionCode)>>; 2];
 
 #[derive(Default)]
 pub struct Lc3 {
@@ -23,6 +22,8 @@ pub struct Lc3 {
     program_counter: u16,
     instruction_register: u16,
     processor_status_register: u16,
+    saved_usp: u16,
+    saved_ssp: u16,
 
     // Memory
     memory_address_register: u16,
@@ -30,8 +31,8 @@ pub struct Lc3 {
     memory: Memory16x16,
 
     // Watchers
-    register_watchers: RegisterWatchersStorage,
-    memory_watchers: MemoryWatchersStorage,
+    register_watchers: RegisterWatchersStorage<Register>,
+    memory_watchers: MemoryWatchersStorage<u16>,
     condition_code_watchers: ConditionCodeWatchersStorage,
 }
 
@@ -40,6 +41,9 @@ impl Lc3 {
     pub fn new(initial_address: u16) -> Self {
         Self {
             program_counter: initial_address,
+            processor_status_register: 0x8002,
+            saved_ssp: 0x3000,
+            saved_usp: 0xfe00,
             ..Default::default()
         }
     }
@@ -58,7 +62,7 @@ impl fmt::Debug for Lc3 {
             0b100 => ConditionCode::Negative,
             0b010 => ConditionCode::Zero,
             0b001 => ConditionCode::Positive,
-            _ => panic!("Condition Code is not valid"),
+            _ => todo!("Condition Code is not valid"),
         };
 
         let condition_code_watchers: &Vec<WatcherType> = &self
@@ -78,12 +82,15 @@ impl fmt::Debug for Lc3 {
             })
             .collect();
 
-        fmt.debug_struct("Lc2")
+        fmt.debug_struct("Lc3")
             .field("memory", &self.memory)
             .field("general_purpose_registers", gpr)
-            .field("condition_code", &condition_code)
             .field("program_counter", &self.program_counter)
             .field("instruction_register", &self.instruction_register)
+            .field("processor_status_register", &self.processor_status_register)
+            .field("condition_code", &condition_code)
+            .field("saved_usp", &self.saved_usp)
+            .field("saved_ssp", &self.saved_ssp)
             .field("memory_address_register", &self.memory_address_register)
             .field("memory_data_register", &self.memory_data_register)
             .field("register_watchers", &self.register_watchers.keys())
@@ -102,6 +109,8 @@ impl Architecture for Lc3 {
 
     #[must_use]
     fn get_memory(&mut self, address: Self::Address) -> Self::Data {
+        // TODO: Implement the Access Control Violation (ACV) exception
+
         let data = self.memory[address];
 
         self.memory_address_register = address;
@@ -116,6 +125,8 @@ impl Architecture for Lc3 {
     }
 
     fn set_memory(&mut self, address: Self::Address, data: Self::Data) {
+        // TODO: Implement the Access Control Violation (ACV) exception
+
         self.memory_address_register = address;
         self.memory_data_register = data;
 
@@ -210,7 +221,16 @@ impl Architecture for Lc3 {
             }
             Register::ProgramCounter => &mut self.program_counter,
             Register::InstructionRegister => &mut self.instruction_register,
-            Register::ProcessorStatusRegister => &mut self.processor_status_register,
+
+            // Check if the condition code is valid
+            Register::ProcessorStatusRegister => {
+                if (data & 0b111).count_ones() != 1 {
+                    todo!("Condition Code is not valid");
+                }
+
+                &mut self.processor_status_register
+            }
+
             Register::MemoryAddressRegister => &mut self.memory_address_register,
             Register::MemoryDataRegister => &mut self.memory_data_register,
         };
@@ -233,7 +253,7 @@ impl Architecture for Lc3 {
             0b100 => Self::ConditionCode::Negative,
             0b010 => Self::ConditionCode::Zero,
             0b001 => Self::ConditionCode::Positive,
-            _ => panic!("Condition Code is not valid"),
+            _ => todo!("Condition Code is not valid"),
         };
 
         // If there is a watcher for the condition code, call it
@@ -309,7 +329,45 @@ impl Architecture for Lc3 {
         todo!()
     }
 
-    fn interrupt(&mut self, _routine_address: Self::Address) {
-        todo!()
+    fn interrupt(&mut self, data: Self::Data) {
+        // Check if the priority of the interrupt is greater of the current
+        // program priority
+        if (data >> 8) & 0b111 <= (self.processor_status_register >> 8) & 0b111 {
+            return;
+        }
+
+        // Save the current Process Status Register into a temp variable
+        let temp = self.get_register(&Register::ProcessorStatusRegister);
+
+        // Set the privilege mode to "Supervisor" and set the correct priority
+        self.set_register(
+            &Register::ProcessorStatusRegister,
+            (temp & 0x78ff) | (data & 0x0700),
+        );
+
+        // Get the stack pointer register
+        let register = Register::Gpr(Gpr::R6);
+
+        // If the interrupted process is in "User" privilege mode then save the
+        // current stack pointer into the "Saved USP" and load the "Saved SSP"
+        if temp >> 15 == 1 {
+            self.saved_usp = self.get_register(&register);
+            self.set_register(&register, self.saved_ssp);
+        }
+
+        // Push the Process Status Register into the stack
+        self.set_register(&register, self.get_register(&register).wrapping_sub(1));
+        self.set_memory(self.get_register(&register), temp);
+
+        // Push the Program Counter to the stack
+        self.set_register(&register, self.get_register(&register).wrapping_sub(1));
+        self.set_memory(
+            self.get_register(&register),
+            self.get_register(&Register::ProgramCounter),
+        );
+
+        // Set the Program Counter to the interrupt routine address
+        let routine_address = self.get_memory(0x0100 | (data & 0x00ff));
+        self.set_register(&Register::ProgramCounter, routine_address);
     }
 }

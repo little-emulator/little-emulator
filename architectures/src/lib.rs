@@ -63,5 +63,5 @@ pub trait Architecture {
 
     fn step_instruction(&mut self);
 
-    fn interrupt(&mut self, routine_address: Self::Address);
+    fn interrupt(&mut self, data: Self::Data);
 }

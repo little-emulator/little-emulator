@@ -4,17 +4,16 @@ mod tests;
 mod registers;
 pub use registers::{Gpr, Register};
 
-use super::common::{ConditionCode, Memory16x16};
-use crate::{Architecture, WatcherType};
+use crate::{
+    common::{
+        ConditionCode, ConditionCodeWatchersStorage, Memory16x16, MemoryWatchersStorage,
+        RegisterWatchersStorage,
+    },
+    Architecture, WatcherType,
+};
+
 use std::collections::BTreeMap;
 use std::fmt;
-
-type RegisterWatchersStorage = BTreeMap<(Register, WatcherType), Box<dyn Fn(u16)>>;
-type MemoryWatchersStorage = BTreeMap<(u16, WatcherType), Box<dyn Fn(u16)>>;
-
-// 0 => WatcherType::OnWrite,
-// 1 => WatcherType::OnRead,
-type ConditionCodeWatchersStorage = [Option<Box<dyn Fn(ConditionCode)>>; 2];
 
 #[derive(Default)]
 pub struct Lc2 {
@@ -30,8 +29,8 @@ pub struct Lc2 {
     memory: Memory16x16,
 
     // Watchers
-    register_watchers: RegisterWatchersStorage,
-    memory_watchers: MemoryWatchersStorage,
+    register_watchers: RegisterWatchersStorage<Register>,
+    memory_watchers: MemoryWatchersStorage<u16>,
     condition_code_watchers: ConditionCodeWatchersStorage,
 }
 
@@ -494,7 +493,7 @@ impl Architecture for Lc2 {
         }
     }
 
-    fn interrupt(&mut self, routine_address: Self::Address) {
+    fn interrupt(&mut self, routine_address: Self::Data) {
         // Save the Condition Code as a u16
         let condition_code = u16::from(self.get_condition_code());
 
